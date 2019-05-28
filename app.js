@@ -152,7 +152,7 @@ app.post("/blogs/:id/comments", function(req,res){
 	   }
 	});
 });
-app.listen(9000,function(){
+app.listen(process.env.PORT, process.env.IP,function(){
 	console.log("The server has started");
 });
 /*app.listen(process.env.PORT, process.env.IP,function(){
