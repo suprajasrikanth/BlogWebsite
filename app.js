@@ -235,9 +235,9 @@ function isLoggedIn(req, res, next){
             res.redirect("/login");
         }
 }*/
-app.listen(9000,function(){
-	console.log("The server has started");
-});
-/*app.listen(process.env.PORT, process.env.IP,function(){
+/*app.listen(9000,function(){
 	console.log("The server has started");
 });*/
+app.listen(process.env.PORT, process.env.IP,function(){
+	console.log("The server has started");
+});
