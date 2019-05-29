@@ -9,7 +9,7 @@
     	                <span class="date"><%= blog.created.toDateString() %></span>
 	                </div>
             	     <div class="description">
-            	        <p><%- blog.body %></p>
+            	        <p><%- blog.body.substring(0,100) %></p>
 					</div>
 					<hr>
 					<a href="/blogs/<%=blog._id%>/edit" class="ui orange basic button">Update Blog</a>
