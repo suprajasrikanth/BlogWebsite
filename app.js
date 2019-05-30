@@ -1,10 +1,12 @@
 var express = require("express"),
     app     = express(),
     mongoose = require("mongoose"),
+	ObjectID = require('mongoose').mongo.ObjectID,
     bodyParser = require("body-parser"),
     expressSanitizer = require("express-sanitizer"),
     methodOverride = require('method-override'),
 	passport = require('passport'),
+	flash=require('connect-flash'),
 	LocalStrategy = require('passport-local'),
 	Blog = require('./models/blogs'),
 	Comment = require('./models/comments'),
@@ -13,7 +15,8 @@ var express = require("express"),
 	seedDB = require('./seeds');
  
 //seedDB();
-mongoose.connect("mongodb+srv://supraja:supraja123@cluster0-xxhiq.mongodb.net/test?retryWrites=true",{
+//console.log(process.env.DATABASEURL);
+mongoose.connect(process.env.DATABASEURL,{
 	useNewUrlParser:true,
 	useCreateIndex:true
 }).then(() => {
@@ -22,26 +25,28 @@ mongoose.connect("mongodb+srv://supraja:supraja123@cluster0-xxhiq.mongodb.net/te
 	console.log("Error",err.message);
 });
 app.use(bodyParser.urlencoded({extended: true}));
-//app.use(expressSanitizer());
 app.set("view engine", "ejs");
 app.use(express.static("public"));
 app.use(methodOverride('_method'));
+app.use(flash());
 mongoose.set('useFindAndModify', false);
 app.use(require("express-session")({
     secret: "Once again Rusty wins cutest dog!",
     resave: false,
     saveUninitialized: false
 }));
+
 app.use(passport.initialize());
 app.use(passport.session());
 passport.use(new LocalStrategy(User.authenticate()));
 passport.serializeUser(User.serializeUser());
 passport.deserializeUser(User.deserializeUser());
 
+
 app.use(function(req, res, next){
    res.locals.currentUser = req.user;
-   //res.locals.success = req.flash('success');
-   //res.locals.error = req.flash('error');
+   res.locals.success = req.flash('success');
+   res.locals.error = req.flash('error');
    next();
 });
 
@@ -77,22 +82,16 @@ app.get("/blogs", function(req, res){
 app.get("/blogs/new",isLoggedIn, function(req, res){
    res.render("new"); 
 });
-/*app.post("/blogs",function(req, res){
-    //req.body.blog.body = req.sanitize(req.body.blog.body);
-   var formData = req.body.blog;
-   Blog.create(formData, function(err, newBlog){
-       console.log(newBlog);
-      if(err){
-          res.render("new");
-      } else {
-          res.redirect("/blogs");
-      }
-   });
-});*/
 app.post("/blogs",isLoggedIn, function(req, res){
-    // get data from form and add to campgrounds array
-   var formData = req.body.blog;
-   Blog.create(formData, function(err, newBlog){
+   const title = req.body.title;
+    const image = req.body.image;
+    const body = req.body.body;
+    const author = {
+        id: req.user._id,
+        username: req.user.username
+    };
+    const newBlog = {title: title, image: image, body: body, author:author};
+   Blog.create(newBlog, function(err, newCreatedBlog){
        console.log(newBlog);
       if(err){
           res.render("new");
@@ -112,7 +111,7 @@ app.get("/blogs/:id", function(req, res){
    });
 });
 
-app.get("/blogs/:id/edit",isLoggedIn, function(req, res){
+app.get("/blogs/:id/edit",checkUserBlog, function(req, res){
     console.log("IN EDIT!");
     Blog.findById(req.params.id, function(err, blog){
         if(err){
@@ -122,30 +121,19 @@ app.get("/blogs/:id/edit",isLoggedIn, function(req, res){
         }
     });
 });
-/*app.put("/blogs/:id", function(req, res){
-	var newData = {name: req.body.name, image: req.body.image, body: req.body.body};
-    Blog.findByIdAndUpdate(req.params.id, {$set: newData}, function(err, blog){
-   //Blog.findByIdAndUpdate(req.params.id, req.body.blog, function(err, blog){
-       if(err){
-           console.log(err);
-       } else {
-         var showUrl = "/blogs/" + blog._id;
-         res.redirect(showUrl);
-       }
-   });
-});*/
 
 app.put("/blogs/:id", function(req, res){
    Blog.findByIdAndUpdate(req.params.id, req.body.blog, function(err, blog){
        if(err){
            console.log(err);
+		   res.redirect("/blogs");
        } else {
          var showUrl = "/blogs/" + blog._id;
          res.redirect(showUrl);
        }
    });
 });
-app.delete("/blogs/:id", function(req, res){
+app.delete("/blogs/:id",checkUserBlog, function(req, res){
    Blog.findById(req.params.id, function(err, blog){
        if(err){
            console.log(err);
@@ -174,8 +162,12 @@ app.post("/blogs/:id/comments",isLoggedIn,function(req,res){
 			res.redirect("/blogs");
        } else {
 		   Comment.create(req.body.comment,function(err, comment){
+			   comment.author.id = req.user._id;
+			   comment.author.username=req.user.username;
+			   comment.save();
 			   blog.comments.push(comment);
 			   blog.save();
+			   req.flash("success","Successfully added comment");
 			   res.redirect('/blogs/'+blog._id);
 		   });
 	   }
@@ -190,11 +182,11 @@ app.post("/register",function(req,res){
     User.register(newUser, req.body.password, function(err, user){
         if(err){
             console.log(err);
-            //req.flash("error", err.message);
+            req.flash("error", err.message);
             return res.render("register");
         }
         passport.authenticate("local")(req, res, function(){
-           //req.flash("success", "Successfully Signed Up! Nice to meet you " + req.body.username);
+           req.flash("success", "Successfully Signed Up! Nice to meet you " + req.body.username);
            res.redirect("/blogs"); 
         });
     });
@@ -210,31 +202,34 @@ app.post("/login",passport.authenticate("local",
 });
 app.get("/logout",function(req,res){
 	req.logout();
+	req.flash("success","Logged you out!");
 	res.redirect("/blogs");
 });
 function isLoggedIn(req, res, next){
         if(req.isAuthenticated()){
             return next();
         }
-        //req.flash("error", "You must be signed in to do that!");
+        req.flash("error", "You must be signed in to do that!");
         res.redirect("/login");
 }
-/*function checkUserBlog(req, res, next){
+function checkUserBlog(req, res, next){
         if(req.isAuthenticated()){
             Blog.findById(req.params.id, function(err, blog){
+				console.log("authop" + blog.author.id);
+				console.log("crnt"+req.user._id);
                if(blog.author.id.equals(req.user._id)){
                    next();
                } else {
-                   //req.flash("error", "You don't have permission to do that!");
+                   req.flash("error", "You don't have permission to do that!");
                    console.log("BADD!!!");
                    res.redirect("/blogs/" + req.params.id);
                }
             });
         } else {
-            //req.flash("error", "You need to be signed in to do that!");
+            req.flash("error", "You need to be signed in to do that!");
             res.redirect("/login");
         }
-}*/
+}
 /*app.listen(9000,function(){
 	console.log("The server has started");
 });*/
